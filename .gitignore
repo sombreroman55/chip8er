@@ -1,0 +1,7 @@
+# Text editor generated files
+*~
+*.swp
+*.un
+
+# Binary executable
+chip8er
