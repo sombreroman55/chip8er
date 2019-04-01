@@ -16,6 +16,12 @@ void cpu_init(Chip8* cpu)
     cpu->finst[1] = 0x00;
     cpu->PC = 0x00;
     cpu->SP = 0x00;
+    cpu->I = 0x00;
+    int i;
+    for (i = 0; i < 0x10; i++)
+    {
+        cpu->V[i] = 0x00;
+    }
 
     /* Install the font */
     /* TODO: Make this more efficient */
@@ -259,6 +265,7 @@ void cpu_execute(Chip8* cpu)
             case 0xD: /* DRW Vx, Vy, nibble */
                 {
                     int i;
+                    cpu->V[0xF] = 0;
                     for (i = 0; i < inst_n_val; i++)
                     {
                         cpu->vidram[(inst_x_val % W) + ((inst_y_val % H) * H)] ^= cpu->memory[cpu->I+i];

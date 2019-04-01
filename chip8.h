@@ -38,6 +38,7 @@ typedef struct
       uint8_t keys[16];
       uint8_t vidram[VIDRAM_SIZE];
       uint8_t waiting;
+      uint8_t last;
     };
   };
 } Chip8;
