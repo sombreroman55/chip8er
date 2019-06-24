@@ -5,41 +5,189 @@
 #include <SDL2/SDL.h>
 #include "chip8.h"
 
-#define SCREEN_WIDTH  640
-#define SCREEN_HEIGHT 480
-
 int main (int argc, char** argv)
 {
-    Chip8 cpu;          /* Chip8 system */
-    cpu_init(&cpu);
+    srand(time(NULL));
+    if (argc != 2)
+    {
+        fprintf(stderr, "Invalid number of arguments!\nUsage: ./chip8er <rom>\n");
+        return -1;
+    }
 
-    SDL_Window* window = NULL;
-    SDL_Surface* screenSurface = NULL;
 
     /* Initialize SDL */
-    if (SDL_Init(SDL_INIT_VIDEO) < 0)
+    if (SDL_Init(SDL_INIT_VIDEO) != 0)
     {
-        sprintf(stderr, "SDL could not initialize! SDL_Error: %s\n", SDL_GetError());
+        SDL_Log("Failed to initialize SDL: %s", SDL_GetError());
+        return -1;
     }
-    else
+    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "nearest");
+    SDL_SetHint(SDL_HINT_BMP_SAVE_LEGACY_FORMAT, "1");
+
+
+    /* Create SDL Window */
+    SDL_Window* window = SDL_CreateWindow("chip8er",
+            SDL_WINDOWPOS_CENTERED,
+            SDL_WINDOWPOS_CENTERED,
+            SCREEN_W * 10,
+            SCREEN_H * 10,
+            SDL_WINDOW_RESIZABLE);
+    if (window == NULL)
     {
-        window = SDL_CreateWindow("Chip8er", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_SHOWN);
-        if (window == NULL)
-        {
-            sprintf(stderr, "Window could not be created! SDL_Error: %s\n", SDL_GetError());
-        }
-        else
-        {
-            screenSurface = SDL_GetWindowSurface(window);
-            SDL_FillRect(screenSurface, NULL, SDL_MapRGB(screenSurface->format, 0xAB, 0xCD, 0xEF));
-            SDL_UpdateWindowSurface(window);
-            SDL_Delay(2000);
-        }
+        SDL_Log("Failed to create SDL window: %s", SDL_GetError());
+        return -1;
     }
+
+    SDL_SetWindowMinimumSize(window, SCREEN_W, SCREEN_H);
+
+
+    /* Create SDL Renderer */
+    SDL_Renderer* renderer = SDL_CreateRenderer(
+            window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+    if (renderer == NULL)
+    {
+        SDL_Log("Failed to create SDL renderer: %s", SDL_GetError());
+        return -1;
+    }
+
+
+    /* Print renderer info */
+    SDL_RendererInfo rend_info;
+    SDL_GetRendererInfo(renderer, &rend_info);
+    const int vsync    = rend_info.flags & SDL_RENDERER_PRESENTVSYNC;
+    const int hw_accel = rend_info.flags & SDL_RENDERER_ACCELERATED;
+    SDL_Log("Using %s video renderer.\n"
+            "VSYNC present:         %s\n"
+            "Hardware Acceleration: %s\n", rend_info.name,
+            ((vsync) ? "YES" : "NO"), ((hw_accel) ? "YES" : "NO"));
+
+
+    /* Create SDL texture */
+    SDL_Texture* texture = SDL_CreateTexture(
+            renderer,
+            SDL_PIXELFORMAT_RGBA32,
+            SDL_TEXTUREACCESS_TARGET,
+            SCREEN_W,
+            SCREEN_H);
+    if (texture == NULL)
+    {
+        SDL_Log("Failed to create SDL texture: %s", SDL_GetError());
+        return -1;
+    }
+
+
+    /* Clear out texture */
+    SDL_SetRenderTarget(renderer, texture);
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+    SDL_RenderClear(renderer);
+
+
+    /* Set up Chip8 system */
+    Chip8 cpu;
+    chip8_init(&cpu);
+    if (chip8_load_file(&cpu, argv[1]) != 0) { return -1; }
+
+    uint32_t timer = SDL_GetTicks();
+    SDL_Event ev;
+    int quit = 0;
+    while (!quit)
+    {
+        while (SDL_PollEvent(&ev) != 0)
+        {
+            if (ev.type == SDL_QUIT)
+            {
+                quit = 1;
+            }
+            else if (ev.type == SDL_KEYDOWN)
+            {
+                switch (ev.key.keysym.sym)
+                {
+                    case SDLK_1: cpu.keys[0x1] = 0x1; break;
+                    case SDLK_2: cpu.keys[0x2] = 0x1; break;
+                    case SDLK_3: cpu.keys[0x3] = 0x1; break;
+                    case SDLK_4: cpu.keys[0xC] = 0x1; break;
+                    case SDLK_a: cpu.keys[0x4] = 0x1; break;
+                    case SDLK_z: cpu.keys[0x5] = 0x1; break;
+                    case SDLK_e: cpu.keys[0x6] = 0x1; break;
+                    case SDLK_r: cpu.keys[0xD] = 0x1; break;
+                    case SDLK_q: cpu.keys[0x7] = 0x1; break;
+                    case SDLK_s: cpu.keys[0x8] = 0x1; break;
+                    case SDLK_d: cpu.keys[0x9] = 0x1; break;
+                    case SDLK_f: cpu.keys[0xE] = 0x1; break;
+                    case SDLK_w: cpu.keys[0xA] = 0x1; break;
+                    case SDLK_x: cpu.keys[0x0] = 0x1; break;
+                    case SDLK_c: cpu.keys[0xB] = 0x1; break;
+                    case SDLK_v: cpu.keys[0xF] = 0x1; break;
+                }
+            }
+            else if (ev.type == SDL_KEYUP)
+            {
+                switch (ev.key.keysym.sym)
+                {
+                    case SDLK_1: cpu.keys[0x1] = 0x0; break;
+                    case SDLK_2: cpu.keys[0x2] = 0x0; break;
+                    case SDLK_3: cpu.keys[0x3] = 0x0; break;
+                    case SDLK_4: cpu.keys[0xC] = 0x0; break;
+                    case SDLK_a: cpu.keys[0x4] = 0x0; break;
+                    case SDLK_z: cpu.keys[0x5] = 0x0; break;
+                    case SDLK_e: cpu.keys[0x6] = 0x0; break;
+                    case SDLK_r: cpu.keys[0xD] = 0x0; break;
+                    case SDLK_q: cpu.keys[0x7] = 0x0; break;
+                    case SDLK_s: cpu.keys[0x8] = 0x0; break;
+                    case SDLK_d: cpu.keys[0x9] = 0x0; break;
+                    case SDLK_f: cpu.keys[0xE] = 0x0; break;
+                    case SDLK_w: cpu.keys[0xA] = 0x0; break;
+                    case SDLK_x: cpu.keys[0x0] = 0x0; break;
+                    case SDLK_c: cpu.keys[0xB] = 0x0; break;
+                    case SDLK_v: cpu.keys[0xF] = 0x0; break;
+                }
+            }
+        }
+
+        /* Tick CPU every 10ms */
+        if (SDL_GetTicks() - timer >= 10)
+        {
+            int i;
+            for (i = 0; i < 3; i++)
+            {
+                chip8_execute(&cpu);
+            }
+
+            /* Update screen if necessary */
+            if (cpu.update_screen)
+            {
+                cpu.update_screen = 0x0;
+
+                SDL_SetRenderTarget(renderer, texture);
+                SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+                SDL_RenderClear(renderer);
+
+                SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+                for (i = 0; i < 2048; i++)
+                {
+                    int py = i / SCREEN_W;
+                    int px = i - (py * SCREEN_W);
+
+                    if (cpu.vidram[i])
+                    {
+                        SDL_RenderDrawPoint(renderer, px, py);
+                    }
+                }
+            }
+        }
+
+        SDL_SetRenderTarget(renderer, NULL);
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderClear(renderer);
+        SDL_RenderCopy(renderer, texture, NULL, NULL);
+        SDL_RenderPresent(renderer);
+    }
+
+    /* Free SDL resources and quit */
+    SDL_DestroyTexture(texture);
+    SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();
 
-    //cpu_execute(&cpu);
-    //printf("PC: 0x%04X\n", cpu.PC);
     return 0;
 }
