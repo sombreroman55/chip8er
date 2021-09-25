@@ -1,4 +1,4 @@
-/* cpu.h
+/* chip8.h
  * Chip8 "CPU" interface
  */
 
@@ -6,38 +6,40 @@
 #define _CHIP8_H_
 
 #include <stdint.h>
+#include <stdbool.h>
+
+#define NUM_REGS    0x10
+#define NUM_KEYS    0x10
+#define STACK_SIZE  0x10
+#define FONT_OFFSET 0x50
+#define MEM_SIZE    0x1000
+#define PROG_START  0x200
+#define ETI_START   0x600
 
 #define SCREEN_W    64
 #define SCREEN_H    32
-#define VIDRAM_SIZE 0x800
-#define FONT_OFFSET 0x50
-#define MEM_SIZE    0x1000
-#define MEM_OFFSET  0x200
+#define VIEW_RATIO  8
+#define VIDRAM_SIZE (SCREEN_W*SCREEN_H/VIEW_RATIO)
 
-#define PRE_MASK  0xF000
-#define NNN_MASK  0x0FFF
-#define N_MASK    0x000F
-#define X_MASK    0x0F00
-#define Y_MASK    0x00F0
-#define KK_MASK   0x00FF
-
-typedef struct
+typedef union
 {
   uint8_t memory[MEM_SIZE];
-  uint8_t  V[0x10];  /* 16 general purpose 8-bit registers */
-  uint16_t I;       /* Memory storage register */
-  uint16_t PC;      /* Program counter */
-  uint16_t SP;      /* Stack pointer */
-  uint16_t stack[16];
-  uint8_t  DT;       /* Delay timer register */
-  uint8_t  ST;       /* Sound timer register */
-  uint8_t  keys[0x10];
-  uint8_t  update_screen;
-  uint8_t  vidram[VIDRAM_SIZE];
+  struct
+  {
+    uint8_t  V[NUM_REGS];       /* 16 general purpose 8-bit registers */
+    uint16_t I;                 /* Memory storage register */
+    uint16_t PC;                /* Program counter */
+    uint16_t SP;                /* Stack pointer */
+    uint16_t stack[STACK_SIZE];
+    uint8_t  DT;                /* Delay timer register */
+    uint8_t  ST;                /* Sound timer register */
+    uint8_t  keys[NUM_KEYS];
+    uint8_t  vidram[SCREEN_W*SCREEN_H/VIEW_RATIO];
+  };
 } Chip8;
 
-int  chip8_init     (Chip8* const cpu);
-int  chip8_load_file(Chip8* const cpu, const char* rom);
-void chip8_execute  (Chip8* const cpu);
+Chip8* chip8_init     (void);
+int    chip8_load_file(Chip8* cpu, const char* rom);
+void   chip8_execute  (Chip8* cpu);
 
 #endif /* _CHIP8_H_ */

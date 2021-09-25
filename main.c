@@ -3,7 +3,12 @@
  */
 
 #include <SDL2/SDL.h>
+#include <stdio.h>
+#include <stdbool.h>
+#include <stdint.h>
 #include "chip8.h"
+
+uint8_t colors = {0x000000, 0xFFFFFF};
 
 int main (int argc, char** argv)
 {
@@ -13,7 +18,6 @@ int main (int argc, char** argv)
         fprintf(stderr, "Invalid number of arguments!\nUsage: ./chip8er <rom>\n");
         return -1;
     }
-
 
     /* Initialize SDL */
     if (SDL_Init(SDL_INIT_VIDEO) != 0)
@@ -83,13 +87,16 @@ int main (int argc, char** argv)
 
 
     /* Set up Chip8 system */
-    Chip8 cpu;
-    chip8_init(&cpu);
-    if (chip8_load_file(&cpu, argv[1]) != 0) { return -1; }
+    Chip8* cpu = chip8_init();
+    if (chip8_load_file(cpu, argv[1]) != 0) 
+    { 
+        SDL_Log("Failed to load rom %s.", argv[1]);
+        return -1; 
+    }
 
     uint32_t timer = SDL_GetTicks();
     SDL_Event ev;
-    int quit = 0;
+    bool quit = false;
     while (!quit)
     {
         while (SDL_PollEvent(&ev) != 0)
@@ -102,85 +109,69 @@ int main (int argc, char** argv)
             {
                 switch (ev.key.keysym.sym)
                 {
-                    case SDLK_1: cpu.keys[0x1] = 0x1; break;
-                    case SDLK_2: cpu.keys[0x2] = 0x1; break;
-                    case SDLK_3: cpu.keys[0x3] = 0x1; break;
-                    case SDLK_4: cpu.keys[0xC] = 0x1; break;
-                    case SDLK_a: cpu.keys[0x4] = 0x1; break;
-                    case SDLK_z: cpu.keys[0x5] = 0x1; break;
-                    case SDLK_e: cpu.keys[0x6] = 0x1; break;
-                    case SDLK_r: cpu.keys[0xD] = 0x1; break;
-                    case SDLK_q: cpu.keys[0x7] = 0x1; break;
-                    case SDLK_s: cpu.keys[0x8] = 0x1; break;
-                    case SDLK_d: cpu.keys[0x9] = 0x1; break;
-                    case SDLK_f: cpu.keys[0xE] = 0x1; break;
-                    case SDLK_w: cpu.keys[0xA] = 0x1; break;
-                    case SDLK_x: cpu.keys[0x0] = 0x1; break;
-                    case SDLK_c: cpu.keys[0xB] = 0x1; break;
-                    case SDLK_v: cpu.keys[0xF] = 0x1; break;
+                    case SDLK_1: cpu->keys[0x1] = 0x1; break;
+                    case SDLK_2: cpu->keys[0x2] = 0x1; break;
+                    case SDLK_3: cpu->keys[0x3] = 0x1; break;
+                    case SDLK_4: cpu->keys[0xC] = 0x1; break;
+                    case SDLK_a: cpu->keys[0x4] = 0x1; break;
+                    case SDLK_z: cpu->keys[0x5] = 0x1; break;
+                    case SDLK_e: cpu->keys[0x6] = 0x1; break;
+                    case SDLK_r: cpu->keys[0xD] = 0x1; break;
+                    case SDLK_q: cpu->keys[0x7] = 0x1; break;
+                    case SDLK_s: cpu->keys[0x8] = 0x1; break;
+                    case SDLK_d: cpu->keys[0x9] = 0x1; break;
+                    case SDLK_f: cpu->keys[0xE] = 0x1; break;
+                    case SDLK_w: cpu->keys[0xA] = 0x1; break;
+                    case SDLK_x: cpu->keys[0x0] = 0x1; break;
+                    case SDLK_c: cpu->keys[0xB] = 0x1; break;
+                    case SDLK_v: cpu->keys[0xF] = 0x1; break;
                 }
             }
             else if (ev.type == SDL_KEYUP)
             {
                 switch (ev.key.keysym.sym)
                 {
-                    case SDLK_1: cpu.keys[0x1] = 0x0; break;
-                    case SDLK_2: cpu.keys[0x2] = 0x0; break;
-                    case SDLK_3: cpu.keys[0x3] = 0x0; break;
-                    case SDLK_4: cpu.keys[0xC] = 0x0; break;
-                    case SDLK_a: cpu.keys[0x4] = 0x0; break;
-                    case SDLK_z: cpu.keys[0x5] = 0x0; break;
-                    case SDLK_e: cpu.keys[0x6] = 0x0; break;
-                    case SDLK_r: cpu.keys[0xD] = 0x0; break;
-                    case SDLK_q: cpu.keys[0x7] = 0x0; break;
-                    case SDLK_s: cpu.keys[0x8] = 0x0; break;
-                    case SDLK_d: cpu.keys[0x9] = 0x0; break;
-                    case SDLK_f: cpu.keys[0xE] = 0x0; break;
-                    case SDLK_w: cpu.keys[0xA] = 0x0; break;
-                    case SDLK_x: cpu.keys[0x0] = 0x0; break;
-                    case SDLK_c: cpu.keys[0xB] = 0x0; break;
-                    case SDLK_v: cpu.keys[0xF] = 0x0; break;
+                    case SDLK_1: cpu->keys[0x1] = 0x0; break;
+                    case SDLK_2: cpu->keys[0x2] = 0x0; break;
+                    case SDLK_3: cpu->keys[0x3] = 0x0; break;
+                    case SDLK_4: cpu->keys[0xC] = 0x0; break;
+                    case SDLK_a: cpu->keys[0x4] = 0x0; break;
+                    case SDLK_z: cpu->keys[0x5] = 0x0; break;
+                    case SDLK_e: cpu->keys[0x6] = 0x0; break;
+                    case SDLK_r: cpu->keys[0xD] = 0x0; break;
+                    case SDLK_q: cpu->keys[0x7] = 0x0; break;
+                    case SDLK_s: cpu->keys[0x8] = 0x0; break;
+                    case SDLK_d: cpu->keys[0x9] = 0x0; break;
+                    case SDLK_f: cpu->keys[0xE] = 0x0; break;
+                    case SDLK_w: cpu->keys[0xA] = 0x0; break;
+                    case SDLK_x: cpu->keys[0x0] = 0x0; break;
+                    case SDLK_c: cpu->keys[0xB] = 0x0; break;
+                    case SDLK_v: cpu->keys[0xF] = 0x0; break;
                 }
             }
         }
 
         /* Tick CPU every 10ms */
+        int pixels[VIDRAM_SIZE];
         if (SDL_GetTicks() - timer >= 10)
         {
             int i;
             for (i = 0; i < 3; i++)
             {
-                chip8_execute(&cpu);
+                chip8_execute(cpu);
             }
 
             /* Update screen if necessary */
-            if (cpu.update_screen)
+            for (i = 0; i < VIDRAM_SIZE; i++)
             {
-                cpu.update_screen = 0x0;
-
-                SDL_SetRenderTarget(renderer, texture);
-                SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-                SDL_RenderClear(renderer);
-
-                SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-                for (i = 0; i < 2048; i++)
-                {
-                    int py = i / SCREEN_W;
-                    int px = i - (py * SCREEN_W);
-
-                    if (cpu.vidram[i])
-                    {
-                        SDL_RenderDrawPoint(renderer, px, py);
-                    }
-                }
+                pixels[i] = 0xFFFFFF * ((cpu->vidram[i/8] >> (7 - i%8)) & 1);
             }
         }
 
-        SDL_SetRenderTarget(renderer, NULL);
-        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-        SDL_RenderClear(renderer);
+        SDL_UpdateTexture(texture, NULL, pixels, 4*SCREEN_W);
         SDL_RenderCopy(renderer, texture, NULL, NULL);
         SDL_RenderPresent(renderer);
+        SDL_Delay(1000/60);
     }
 
     /* Free SDL resources and quit */

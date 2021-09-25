@@ -5,7 +5,7 @@ OBJS = main.c chip8.c
 CC = gcc
 
 # Compiler flags
-COMPILER_FLAGS = -w
+COMPILER_FLAGS = -w -ggdb
 
 # Linker flags
 LINKER_FLAGS = -lSDL2

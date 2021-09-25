@@ -1,41 +1,55 @@
-/* cpu.c
+/* chip8.c
  * Chip8 "CPU" implementation
  */
 
 #include <string.h>
 #include <time.h>   /* For RNG seed */
-#include <stdlib.h> /* For RNG */
+#include <stdlib.h> /* For RNG and malloc */
 #include <stdio.h>
 #include "chip8.h"
 
-static const uint8_t chip8_fontset[] = {
-    0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
-    0x20, 0x60, 0x20, 0x20, 0x70, // 1
-    0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2
-    0xF0, 0x10, 0xF0, 0x10, 0xF0, // 3
-    0x90, 0x90, 0xF0, 0x10, 0x10, // 4
-    0xF0, 0x80, 0xF0, 0x10, 0xF0, // 5
-    0xF0, 0x80, 0xF0, 0x90, 0xF0, // 6
-    0xF0, 0x10, 0x20, 0x40, 0x40, // 7
-    0xF0, 0x90, 0xF0, 0x90, 0xF0, // 8
-    0xF0, 0x90, 0xF0, 0x10, 0xF0, // 9
-    0xF0, 0x90, 0xF0, 0x90, 0x90, // A
-    0xE0, 0x90, 0xE0, 0x90, 0xE0, // B
-    0xF0, 0x80, 0x80, 0x80, 0xF0, // C
-    0xE0, 0x90, 0x90, 0x90, 0xE0, // D
-    0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
-    0xF0, 0x80, 0xF0, 0x80, 0x80  // F
+#define PRE_MASK  0xF000
+#define PRE_SHIFT 12
+
+#define NNN_MASK  0x0FFF
+#define N_MASK    0x000F
+
+#define X_MASK    0x0F00
+#define X_SHIFT   8
+
+#define Y_MASK    0x00F0
+#define Y_SHIFT   4
+
+#define KK_MASK   0x00FF
+
+static const uint8_t chip8_fontset[16][5] = {
+    { 0xF0, 0x90, 0x90, 0x90, 0xF0 },  // 0
+    { 0x20, 0x60, 0x20, 0x20, 0x70 },  // 1
+    { 0xF0, 0x10, 0xF0, 0x80, 0xF0 },  // 2
+    { 0xF0, 0x10, 0xF0, 0x10, 0xF0 },  // 3
+    { 0x90, 0x90, 0xF0, 0x10, 0x10 },  // 4
+    { 0xF0, 0x80, 0xF0, 0x10, 0xF0 },  // 5
+    { 0xF0, 0x80, 0xF0, 0x90, 0xF0 },  // 6
+    { 0xF0, 0x10, 0x20, 0x40, 0x40 },  // 7
+    { 0xF0, 0x90, 0xF0, 0x90, 0xF0 },  // 8
+    { 0xF0, 0x90, 0xF0, 0x10, 0xF0 },  // 9
+    { 0xF0, 0x90, 0xF0, 0x90, 0x90 },  // A
+    { 0xE0, 0x90, 0xE0, 0x90, 0xE0 },  // B
+    { 0xF0, 0x80, 0x80, 0x80, 0xF0 },  // C
+    { 0xE0, 0x90, 0x90, 0x90, 0xE0 },  // D
+    { 0xF0, 0x80, 0xF0, 0x80, 0xF0 },  // E
+    { 0xF0, 0x80, 0xF0, 0x80, 0x80 }   // F
 };
 
-int chip8_init(Chip8* cpu)
+Chip8* chip8_init(void)
 {
+    Chip8* cpu = malloc(sizeof(Chip8));
     memset(cpu->vidram, 0, VIDRAM_SIZE);
-    cpu->PC = MEM_OFFSET;
+    cpu->PC = PROG_START;
     cpu->SP = 0x00;
     cpu->I  = 0x00;
     cpu->DT = 0x00;
     cpu->ST = 0x00;
-    cpu->update_screen = 0x00;
     int i;
     for (i = 0; i < 0x10; i++)
     {
@@ -44,10 +58,10 @@ int chip8_init(Chip8* cpu)
 
     /* Install the font */
     memcpy(&cpu->memory[FONT_OFFSET], chip8_fontset, sizeof(chip8_fontset));
-    return 0;
+    return cpu;
 }
 
-int  chip8_load_file(Chip8* const cpu, const char* rom)
+int chip8_load_file(Chip8* cpu, const char* rom)
 {
     FILE* file = fopen(rom, "rb");
     if (file == NULL)
@@ -60,13 +74,13 @@ int  chip8_load_file(Chip8* const cpu, const char* rom)
     unsigned long sz = ftell(file);
     rewind(file);
 
-    if (sz > MEM_SIZE - MEM_OFFSET)
+    if (sz > MEM_SIZE - PROG_START)
     {
         fprintf(stderr, "Error! ROM filesize too large!\n");
         return -1;
     }
 
-    if (fread(&cpu->memory[MEM_OFFSET], 1, sz, file) != sz)
+    if (fread(&cpu->memory[PROG_START], 1, sz, file) != sz)
     {
         fprintf(stderr, "Error while reading ROM file!\n");
         return -1;
@@ -79,14 +93,13 @@ int  chip8_load_file(Chip8* const cpu, const char* rom)
 
 void chip8_execute(Chip8* cpu)
 {
-    uint16_t instruction  =  (cpu->memory[cpu->PC] << 8) 
-        | cpu->memory[cpu->PC+1];
-    uint16_t prefix  = (instruction & PRE_MASK) >> 12;
-    uint16_t nnn = (instruction & NNN_MASK);
-    uint16_t n   = (instruction & N_MASK);
-    uint16_t x   = (instruction & X_MASK) >> 8;
-    uint16_t y   = (instruction & Y_MASK) >> 4;
-    uint16_t kk  = (instruction & KK_MASK);
+    uint16_t instruction = cpu->memory[cpu->PC] | (cpu->memory[cpu->PC+1] << 8);
+    uint16_t prefix      = (instruction & PRE_MASK) >> PRE_SHIFT;
+    uint16_t nnn         = (instruction & NNN_MASK);
+    uint16_t n           = (instruction & N_MASK);
+    uint16_t x           = (instruction & X_MASK) >> X_SHIFT;
+    uint16_t y           = (instruction & Y_MASK) >> Y_SHIFT;
+    uint16_t kk          = (instruction & KK_MASK);
     cpu->PC += 2; /* Increment program counter */
     int i;
     switch(prefix)
@@ -96,7 +109,6 @@ void chip8_execute(Chip8* cpu)
             {
                 case 0xE0: /* CLS */
                     memset(cpu->vidram, 0, VIDRAM_SIZE);
-                    cpu->update_screen = 0x1;
                     break;
 
                 case 0xEE: /* RET */
@@ -158,12 +170,12 @@ void chip8_execute(Chip8* cpu)
 
                 case 0x4: /* ADD Vx, Vy */
                     cpu->V[0xF] = cpu->V[x] + cpu->V[y] > 0xFF;
-                    cpu->V[x] += cpu->V[y];
+                    cpu->V[x]  += cpu->V[y];
                     break;
 
                 case 0x5: /* SUB Vx, Vy */
-                    cpu->V[0xF] = cpu->V[x] >= cpu->V[y];
-                    cpu->V[x] -= cpu->V[y];
+                    cpu->V[0xF] = (uint8_t)(cpu->V[x] >= cpu->V[y]);
+                    cpu->V[x]  -= cpu->V[y];
                     break;
 
                 case 0x6: /* SHR Vx, Vy */
@@ -172,8 +184,8 @@ void chip8_execute(Chip8* cpu)
                     break;
 
                 case 0x7: /* SUBN Vx, Vy */
-                    cpu->V[0xF] = cpu->V[x] <= cpu->V[y];
-                    cpu->V[x] = cpu->V[y] - cpu->V[x];
+                    cpu->V[0xF] = (uint8_t)(cpu->V[x] <= cpu->V[y]);
+                    cpu->V[x]   = cpu->V[y] - cpu->V[x];
                     break;
 
                 case 0xE: /* SHL Vx, Vy */
@@ -216,7 +228,6 @@ void chip8_execute(Chip8* cpu)
                     cpu->vidram[pos] ^= pixel;
                 }
             }
-            cpu->update_screen = 0x1;
             break;
 
         case 0xE:
@@ -308,6 +319,6 @@ void chip8_execute(Chip8* cpu)
     }
 
     /* Decrement timers */
-    if (cpu->DT > 0) { cpu->DT--; }
-    if (cpu->ST > 0) { if (cpu->ST == 1) printf("poop\n"); cpu->ST--; }
+    if (cpu->DT > 0) { cpu->DT -= 1; }
+    if (cpu->ST > 0) { cpu->ST -= 1; }
 }
