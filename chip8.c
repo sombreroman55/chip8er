@@ -22,42 +22,43 @@
 
 #define KK_MASK   0x00FF
 
-static const uint8_t chip8_fontset[16][5] = {
-    { 0xF0, 0x90, 0x90, 0x90, 0xF0 },  // 0
-    { 0x20, 0x60, 0x20, 0x20, 0x70 },  // 1
-    { 0xF0, 0x10, 0xF0, 0x80, 0xF0 },  // 2
-    { 0xF0, 0x10, 0xF0, 0x10, 0xF0 },  // 3
-    { 0x90, 0x90, 0xF0, 0x10, 0x10 },  // 4
-    { 0xF0, 0x80, 0xF0, 0x10, 0xF0 },  // 5
-    { 0xF0, 0x80, 0xF0, 0x90, 0xF0 },  // 6
-    { 0xF0, 0x10, 0x20, 0x40, 0x40 },  // 7
-    { 0xF0, 0x90, 0xF0, 0x90, 0xF0 },  // 8
-    { 0xF0, 0x90, 0xF0, 0x10, 0xF0 },  // 9
-    { 0xF0, 0x90, 0xF0, 0x90, 0x90 },  // A
-    { 0xE0, 0x90, 0xE0, 0x90, 0xE0 },  // B
-    { 0xF0, 0x80, 0x80, 0x80, 0xF0 },  // C
-    { 0xE0, 0x90, 0x90, 0x90, 0xE0 },  // D
-    { 0xF0, 0x80, 0xF0, 0x80, 0xF0 },  // E
-    { 0xF0, 0x80, 0xF0, 0x80, 0x80 }   // F
+static const uint8_t chip8_fontset[80] = {
+    0xF0, 0x90, 0x90, 0x90, 0xF0,  // 0
+    0x20, 0x60, 0x20, 0x20, 0x70,  // 1
+    0xF0, 0x10, 0xF0, 0x80, 0xF0,  // 2
+    0xF0, 0x10, 0xF0, 0x10, 0xF0,  // 3
+    0x90, 0x90, 0xF0, 0x10, 0x10,  // 4
+    0xF0, 0x80, 0xF0, 0x10, 0xF0,  // 5
+    0xF0, 0x80, 0xF0, 0x90, 0xF0,  // 6
+    0xF0, 0x10, 0x20, 0x40, 0x40,  // 7
+    0xF0, 0x90, 0xF0, 0x90, 0xF0,  // 8
+    0xF0, 0x90, 0xF0, 0x10, 0xF0,  // 9
+    0xF0, 0x90, 0xF0, 0x90, 0x90,  // A
+    0xE0, 0x90, 0xE0, 0x90, 0xE0,  // B
+    0xF0, 0x80, 0x80, 0x80, 0xF0,  // C
+    0xE0, 0x90, 0x90, 0x90, 0xE0,  // D
+    0xF0, 0x80, 0xF0, 0x80, 0xF0,  // E
+    0xF0, 0x80, 0xF0, 0x80, 0x80   // F
 };
 
 Chip8* chip8_init(void)
 {
     Chip8* cpu = malloc(sizeof(Chip8));
-    memset(cpu->vidram, 0, VIDRAM_SIZE);
+    memset(cpu->display.vidram, 0, sizeof(cpu->display.vidram));
     cpu->PC = PROG_START;
     cpu->SP = 0x00;
     cpu->I  = 0x00;
     cpu->DT = 0x00;
     cpu->ST = 0x00;
     int i;
-    for (i = 0; i < 0x10; i++)
+    for (i = 0; i < NUM_REGS; i++)
     {
         cpu->V[i] = 0x00;
     }
 
     /* Install the font */
     memcpy(&cpu->memory[FONT_OFFSET], chip8_fontset, sizeof(chip8_fontset));
+    printf("Chip8 initialized\n");
     return cpu;
 }
 
@@ -88,12 +89,13 @@ int chip8_load_file(Chip8* cpu, const char* rom)
 
     fclose(file);
 
+    printf("ROM loaded\n");
     return 0;
 }
 
 void chip8_execute(Chip8* cpu)
 {
-    uint16_t instruction = cpu->memory[cpu->PC] | (cpu->memory[cpu->PC+1] << 8);
+    uint16_t instruction = (cpu->memory[cpu->PC] << 8) | cpu->memory[cpu->PC+1];
     uint16_t prefix      = (instruction & PRE_MASK) >> PRE_SHIFT;
     uint16_t nnn         = (instruction & NNN_MASK);
     uint16_t n           = (instruction & N_MASK);
@@ -108,7 +110,8 @@ void chip8_execute(Chip8* cpu)
             switch(kk)
             {
                 case 0xE0: /* CLS */
-                    memset(cpu->vidram, 0, VIDRAM_SIZE);
+                    memset(cpu->display.vidram, 0, sizeof(cpu->display.vidram));
+                    cpu->display.dirty = true;
                     break;
 
                 case 0xEE: /* RET */
@@ -142,7 +145,7 @@ void chip8_execute(Chip8* cpu)
             break;
 
         case 0x6: /* LD Vx, byte */
-            cpu->V[x] == kk;
+            cpu->V[x] = kk;
             break;
 
         case 0x7: /* ADD Vx, byte */
@@ -189,7 +192,7 @@ void chip8_execute(Chip8* cpu)
                     break;
 
                 case 0xE: /* SHL Vx, Vy */
-                    cpu->V[0xF] = cpu->V[x] >> 7;
+                    cpu->V[0xF] = cpu->V[x] >> 7 & 0x1;
                     cpu->V[x] <<= 1;
                     break;
             }
@@ -214,20 +217,24 @@ void chip8_execute(Chip8* cpu)
 
         case 0xD: /* DRW Vx, Vy, nibble */
             cpu->V[0xF] = 0;
-            for (int yline = 0; yline < n; yline++)
+            int px = cpu->V[x] & 63;
+            int py = cpu->V[y] & 31;
+            for (int i = 0; i < n; i++)
             {
-                uint8_t sprite = cpu->memory[cpu->I + yline];
-                for (int xline = 0; xline < 8; xline++)
+                int yy = py + i;
+                if (yy >= 32) break;
+                uint8_t sprite = cpu->memory[cpu->I + i];
+                for (int j = 0; j < 8; j++)
                 {
-                    int px = (cpu->V[x] + xline) & 63;
-                    int py = (cpu->V[y] + yline) & 31;
-                    int pos = 64 * py + px;
-                    int pixel = (sprite >> (7 - xline)) & 0x1;
+                    uint8_t xx = px + j;
+                    if (xx >= 64) break;
+                    uint8_t pixel = (sprite & (1 << (7 - j))) >> (7 - j);
 
-                    cpu->V[0xF] |= (cpu->vidram[pos] & pixel);
-                    cpu->vidram[pos] ^= pixel;
+                    cpu->V[0xF] |= (cpu->display.vidram[yy][xx] & pixel);
+                    cpu->display.vidram[yy][xx] ^= pixel;
                 }
             }
+            cpu->display.dirty = true;
             break;
 
         case 0xE:
@@ -255,22 +262,19 @@ void chip8_execute(Chip8* cpu)
                 case 0x0A: /* LD Vx, K */
                     {
                         int pressed = 0;
-                        for (i = 0; i < 16; i++)
+                        while (!pressed)
                         {
-                            if (cpu->keys[i])
+                            for (i = 0; i < 16; i++)
                             {
-                                cpu->V[x] = i;
-                                pressed = 1;
-                                break;
+                                if (cpu->keys[i])
+                                {
+                                    cpu->V[x] = i;
+                                    pressed = 1;
+                                    break;
+                                }
                             }
                         }
 
-                        /* Do this until a key is pressed */
-                        if (!pressed)
-                        {
-                            cpu->PC -= 2;
-                            return;
-                        }
                     }
                     break;
 
@@ -288,7 +292,7 @@ void chip8_execute(Chip8* cpu)
                     break;
 
                 case 0x29: /* LD F, Vx */
-                    cpu->I = FONT_OFFSET + (cpu->V[x] & 0xF) * 5;
+                    cpu->I = FONT_OFFSET + ((cpu->V[x] & 0x0F) * 5);
                     break;
 
                 case 0x33: /* LD B, Vx */
@@ -317,8 +321,4 @@ void chip8_execute(Chip8* cpu)
             printf("Unrecognized opcode!");
             break;
     }
-
-    /* Decrement timers */
-    if (cpu->DT > 0) { cpu->DT -= 1; }
-    if (cpu->ST > 0) { cpu->ST -= 1; }
 }

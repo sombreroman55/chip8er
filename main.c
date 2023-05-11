@@ -6,9 +6,12 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <time.h>
 #include "chip8.h"
 
-uint8_t colors = {0x000000, 0xFFFFFF};
+#define SCREEN_W 640
+#define SCREEN_H 320
+#define CPU_HZ   500
 
 int main (int argc, char** argv)
 {
@@ -33,9 +36,9 @@ int main (int argc, char** argv)
     SDL_Window* window = SDL_CreateWindow("chip8er",
             SDL_WINDOWPOS_CENTERED,
             SDL_WINDOWPOS_CENTERED,
-            SCREEN_W * 10,
-            SCREEN_H * 10,
-            SDL_WINDOW_RESIZABLE);
+            SCREEN_W,
+            SCREEN_H,
+            SDL_WINDOW_SHOWN);
     if (window == NULL)
     {
         SDL_Log("Failed to create SDL window: %s", SDL_GetError());
@@ -54,7 +57,6 @@ int main (int argc, char** argv)
         return -1;
     }
 
-
     /* Print renderer info */
     SDL_RendererInfo rend_info;
     SDL_GetRendererInfo(renderer, &rend_info);
@@ -65,36 +67,14 @@ int main (int argc, char** argv)
             "Hardware Acceleration: %s\n", rend_info.name,
             ((vsync) ? "YES" : "NO"), ((hw_accel) ? "YES" : "NO"));
 
-
-    /* Create SDL texture */
-    SDL_Texture* texture = SDL_CreateTexture(
-            renderer,
-            SDL_PIXELFORMAT_RGBA32,
-            SDL_TEXTUREACCESS_TARGET,
-            SCREEN_W,
-            SCREEN_H);
-    if (texture == NULL)
+    /* Set up Chip8 system */
+    Chip8* cpu = chip8_init();
+    if (chip8_load_file(cpu, argv[1]) != 0)
     {
-        SDL_Log("Failed to create SDL texture: %s", SDL_GetError());
+        SDL_Log("Failed to load rom %s.", argv[1]);
         return -1;
     }
 
-
-    /* Clear out texture */
-    SDL_SetRenderTarget(renderer, texture);
-    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-    SDL_RenderClear(renderer);
-
-
-    /* Set up Chip8 system */
-    Chip8* cpu = chip8_init();
-    if (chip8_load_file(cpu, argv[1]) != 0) 
-    { 
-        SDL_Log("Failed to load rom %s.", argv[1]);
-        return -1; 
-    }
-
-    uint32_t timer = SDL_GetTicks();
     SDL_Event ev;
     bool quit = false;
     while (!quit)
@@ -151,31 +131,44 @@ int main (int argc, char** argv)
             }
         }
 
-        /* Tick CPU every 10ms */
-        int pixels[VIDRAM_SIZE];
-        if (SDL_GetTicks() - timer >= 10)
-        {
-            int i;
-            for (i = 0; i < 3; i++)
-            {
-                chip8_execute(cpu);
-            }
+        int y_scale = SCREEN_H / VIDRAM_H;
+        int x_scale = SCREEN_W / VIDRAM_W;
+        SDL_Rect pixel = {0, 0, x_scale, y_scale};
 
-            /* Update screen if necessary */
-            for (i = 0; i < VIDRAM_SIZE; i++)
-            {
-                pixels[i] = 0xFFFFFF * ((cpu->vidram[i/8] >> (7 - i%8)) & 1);
-            }
+        for (int i = 0; i < 16; i++)
+        {
+            chip8_execute(cpu);
         }
 
-        SDL_UpdateTexture(texture, NULL, pixels, 4*SCREEN_W);
-        SDL_RenderCopy(renderer, texture, NULL, NULL);
-        SDL_RenderPresent(renderer);
+        /* Update screen if necessary */
+        if (cpu->display.dirty)
+        {
+            for (int i = 0; i < VIDRAM_H; i++)
+            {
+                for (int j = 0; j < VIDRAM_W; j++)
+                {
+                    SDL_SetRenderDrawColor(renderer,
+                                           0xFF * cpu->display.vidram[i][j],
+                                           0xFF * cpu->display.vidram[i][j],
+                                           0xFF * cpu->display.vidram[i][j],
+                                           0xFF);
+                    pixel.x = j * x_scale;
+                    pixel.y = i * y_scale;
+                    SDL_RenderFillRect(renderer, &pixel);
+                }
+            }
+            cpu->display.dirty = false;
+            SDL_RenderPresent(renderer);
+        }
+
+        /* Decrement timers */
+        if (cpu->DT) cpu->DT--;
+        if (cpu->ST) cpu->ST--;
         SDL_Delay(1000/60);
     }
 
     /* Free SDL resources and quit */
-    SDL_DestroyTexture(texture);
+    free(cpu);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();
